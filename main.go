@@ -91,6 +91,7 @@ func (server *NetFlowServer) Start() {
 }
 
 //获取开关配置
+//TODO: 改用配置发现的方式
 func (server *NetFlowServer) getConfig() (string, error) {
 	testConfig := "{\"in_bandwidth\":0,\"in_waterlevel\":100,\"out_bandwidth\":0,\"out_waterlevel\":100,\"open\":true,\"checklist\":1,\"modules\":{\"conn_sc\":{\"max_in_qps\":2000,\"max_out_qps\":2000}}}"
 	return testConfig, nil
@@ -115,6 +116,9 @@ func (server *NetFlowServer) syncConfig() {
 					} else {
 						server.close()
 					}
+				} else {
+					LOG_ERROR(err)
+					server.close()
 				}
 			}
 			timer.Reset(dur)
