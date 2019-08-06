@@ -1,0 +1,11 @@
+.idea
+.vscode
+.idea/*
+.vscode/*
+*.log
+*.log.*
+netflow
+netflow.exe
+go-netflow.exe
+go-netflow
+*.cpu
