@@ -11,17 +11,6 @@ import (
 
 func (server *NetFlowServer) flowCollect() (in, out int64, err error) {
 
-	//初始化 iptables
-	server.once.Do(func() {
-		ports := []int{}
-		server.mux.RLock()
-		for _, cf := range server.portsFlowCounters {
-			ports = append(ports, cf.port)
-		}
-		server.mux.RUnlock()
-		initIpTables(ports)
-	})
-
 	//因为Linux的流量是累加值，所以要通过历史的计数器相减再除采集间隔获取秒级的出入口流量
 
 	server.mux.Lock()
@@ -110,9 +99,11 @@ func getPortOutFlowByIptables(port int) (int64, error) {
 	return int64(count), nil
 }
 
-//初始化 iptables
-func initIpTables(portsList []int) {
+func (server *NetFlowServer) cleanRecords() {
 
+	LOG_DEBUG(">>>>>>>>>>>> clean records")
+
+	portsList := server.portsList
 	for _, port := range portsList {
 		LOG_INFO_F("init iptables with port : %d", port)
 
@@ -135,16 +126,25 @@ func initIpTables(portsList []int) {
 			exec.Command("iptables", "-D", "OUTPUT", "-p", "tcp", "--sport", fmt.Sprintf("%d", port)),
 		}
 		ExecPipeLine(scmd1...)
+	}
+}
 
-		dcmd2 := []*exec.Cmd{
+func (server *NetFlowServer) setupRecords() {
+
+	LOG_DEBUG(">>>>>>>>>>>> setup records")
+
+	portsList := server.portsList
+	for _, port := range portsList {
+		LOG_INFO_F("init iptables with port : %d", port)
+
+		cmd1 := []*exec.Cmd{
 			exec.Command("iptables", "-A", "INPUT", "-p", "tcp", "--dport", fmt.Sprintf("%d", port)),
 		}
-		ExecPipeLine(dcmd2...)
+		ExecPipeLine(cmd1...)
 
-		scmd2 := []*exec.Cmd{
+		cmd2 := []*exec.Cmd{
 			exec.Command("iptables", "-A", "OUTPUT", "-p", "tcp", "--sport", fmt.Sprintf("%d", port)),
 		}
-		ExecPipeLine(scmd2...)
-
+		ExecPipeLine(cmd2...)
 	}
 }

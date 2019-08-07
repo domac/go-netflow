@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -15,6 +16,9 @@ import (
 )
 
 var ErrCollect = errors.New("fail to collect flow infomation")
+
+//测试用的配置
+var testConfig = "{\"open\":true}"
 
 var (
 	flagSet  = flag.NewFlagSet("netflow", flag.ExitOnError)
@@ -44,6 +48,7 @@ type (
 		openFlag           uint32
 		collectIntervalSec int
 		portsFlowCounters  []*collectInfo //0-in 1-out
+		portsList          []int
 	}
 
 	collectInfo struct {
@@ -62,19 +67,11 @@ func NewNetFlowServer(portsList []int) *NetFlowServer {
 		flowChan:           make(chan *RootNetFlow, 60*60),
 		openFlag:           0,
 		collectIntervalSec: 1, //秒级采集
+		portsList:          portsList,
 	}
 
-	//初始化流量计数器
-	var counters []*collectInfo
-	for _, port := range portsList {
-		cf := &collectInfo{
-			port:    port,
-			inFlow:  0,
-			outFlow: 0,
-		}
-		counters = append(counters, cf)
-	}
-	server.portsFlowCounters = counters
+	server.cleanRecords()
+	server.resetFlow()
 	return server
 }
 
@@ -88,12 +85,13 @@ func (server *NetFlowServer) Start() {
 
 	go server.timerFlowCollect()
 
+	go server.openApi()
+
 }
 
 //获取开关配置
 //TODO: 改用配置发现的方式
 func (server *NetFlowServer) getConfig() (string, error) {
-	testConfig := "{\"in_bandwidth\":0,\"in_waterlevel\":100,\"out_bandwidth\":0,\"out_waterlevel\":100,\"open\":true,\"checklist\":1,\"modules\":{\"conn_sc\":{\"max_in_qps\":2000,\"max_out_qps\":2000}}}"
 	return testConfig, nil
 }
 
@@ -124,6 +122,22 @@ func (server *NetFlowServer) syncConfig() {
 			timer.Reset(dur)
 		}
 	}
+}
+
+//重置流量状态
+func (server *NetFlowServer) resetFlow() {
+	LOG_INFO(">>>>>>>>>>>>>>>>> reset flow status")
+	//初始化流量计数器
+	var counters []*collectInfo
+	for _, port := range server.portsList {
+		cf := &collectInfo{
+			port:    port,
+			inFlow:  0,
+			outFlow: 0,
+		}
+		counters = append(counters, cf)
+	}
+	server.portsFlowCounters = counters
 }
 
 func (server *NetFlowServer) timerFlowCollect() {
@@ -172,12 +186,23 @@ func (server *NetFlowServer) IsClosed() bool {
 
 //开启流量采集
 func (server *NetFlowServer) open() {
-	atomic.StoreUint32(&server.openFlag, 1)
+	if atomic.CompareAndSwapUint32(&server.openFlag, 0, 1) {
+		LOG_INFO_F("turn netflow collect: Off -> On")
+		server.mux.Lock()
+		defer server.mux.Unlock()
+		server.setupRecords()
+	}
 }
 
 //关闭流量采集
 func (server *NetFlowServer) close() {
-	atomic.StoreUint32(&server.openFlag, 0)
+	if atomic.CompareAndSwapUint32(&server.openFlag, 1, 0) {
+		LOG_INFO_F("turn netflow collect: On -> Off")
+		server.mux.Lock()
+		defer server.mux.Unlock()
+		server.cleanRecords()
+		server.resetFlow()
+	}
 }
 
 func (server *NetFlowServer) Shutdown() {
@@ -209,4 +234,28 @@ func main() {
 	WaitEvent()
 	EmitEvent(Event_EXIT)
 	LOG_INFO("Netflow Exit")
+}
+
+func (s *NetFlowServer) openApi() {
+	http.HandleFunc("/on", s.testOnHandler)
+	http.HandleFunc("/off", s.testOffHandler)
+
+	var err error
+	err = http.ListenAndServe("0.0.0.0:25555", nil)
+	if err != nil {
+		LOG_ERROR(err)
+		panic(err)
+	}
+}
+
+func (s *NetFlowServer) testOnHandler(rspWriter http.ResponseWriter, req *http.Request) {
+	LOG_INFO("-------------------> collect on")
+	testConfig = "{\"open\":true}"
+	rspWriter.Write([]byte("on ok"))
+}
+
+func (s *NetFlowServer) testOffHandler(rspWriter http.ResponseWriter, req *http.Request) {
+	LOG_INFO("-------------------> collect off")
+	testConfig = "{\"open\":false}"
+	rspWriter.Write([]byte("off ok"))
 }
