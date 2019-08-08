@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -15,13 +14,11 @@ import (
 	"time"
 )
 
-var ErrCollect = errors.New("fail to collect flow infomation")
-
 //测试用的配置
 var testConfig = "{\"open\":true}"
 
 var (
-	flagSet  = flag.NewFlagSet("netflow", flag.ExitOnError)
+	flagSet  = flag.NewFlagSet("netFlow", flag.ExitOnError)
 	logLevel = flagSet.String("logLevel", "info", "log level")
 	ports    = flagSet.String("ports", "8080,18080,28080", "port which collect")
 )
@@ -90,7 +87,6 @@ func (server *NetFlowServer) Start() {
 }
 
 //获取开关配置
-//TODO: 改用配置发现的方式
 func (server *NetFlowServer) getConfig() (string, error) {
 	return testConfig, nil
 }
@@ -230,15 +226,15 @@ func main() {
 
 	go server.Start()
 	//事件监听
-	_ = OnEvent(Event_EXIT, server.Shutdown)
+	_ = OnEvent(EventExit, server.Shutdown)
 	WaitEvent()
-	EmitEvent(Event_EXIT)
+	EmitEvent(EventExit)
 	LOG_INFO("Netflow Exit")
 }
 
-func (s *NetFlowServer) openApi() {
-	http.HandleFunc("/on", s.testOnHandler)
-	http.HandleFunc("/off", s.testOffHandler)
+func (server *NetFlowServer) openApi() {
+	http.HandleFunc("/on", server.testOnHandler)
+	http.HandleFunc("/off", server.testOffHandler)
 
 	var err error
 	err = http.ListenAndServe("0.0.0.0:25555", nil)
@@ -248,14 +244,14 @@ func (s *NetFlowServer) openApi() {
 	}
 }
 
-func (s *NetFlowServer) testOnHandler(rspWriter http.ResponseWriter, req *http.Request) {
+func (server *NetFlowServer) testOnHandler(rspWriter http.ResponseWriter, req *http.Request) {
 	LOG_INFO("-------------------> collect on")
 	testConfig = "{\"open\":true}"
-	rspWriter.Write([]byte("on ok"))
+	_, _ = rspWriter.Write([]byte("on ok"))
 }
 
-func (s *NetFlowServer) testOffHandler(rspWriter http.ResponseWriter, req *http.Request) {
+func (server *NetFlowServer) testOffHandler(rspWriter http.ResponseWriter, req *http.Request) {
 	LOG_INFO("-------------------> collect off")
 	testConfig = "{\"open\":false}"
-	rspWriter.Write([]byte("off ok"))
+	_, _ = rspWriter.Write([]byte("off ok"))
 }

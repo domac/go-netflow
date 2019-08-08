@@ -9,8 +9,7 @@ import (
 )
 
 const (
-	Event_EXIT = "exit"
-	Event_WAIT = "wait"
+	EventExit = "exit"
 )
 
 var (
